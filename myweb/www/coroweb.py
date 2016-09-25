@@ -151,21 +151,21 @@ def add_route(app, fn):
     if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
         fn = asyncio.coroutine(fn)
     logging.info('add route %s %s => %s(%s)' % (method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
-    app.router.add_route(method, path, RequestHandler(app, fn))
+    app.router.add_route(method, path, RequestHandler(app, fn)) # app.router.add_route('GET', '/hello/{name}', hello)
 
 def add_routes(app, module_name):
     n = module_name.rfind('.')
-    if n == (-1):
+    if n == (-1):  # handlers.py
         mod = __import__(module_name, globals(), locals())
     else:
         name = module_name[n+1:]
-        mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name)
+        mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name) #tmp = __import__('pkg', fromlist=['mod', 'mod2']) mod = tmp.mod  mod2 = tmp.mod2
     for attr in dir(mod):
         if attr.startswith('_'):
             continue
-        fn = getattr(mod, attr)
-        if callable(fn):
-            method = getattr(fn, '__method__', None)
-            path = getattr(fn, '__route__', None)
+        fn = getattr(mod, attr) # eg. getattr(handlers, 'index')
+        if callable(fn):   # index() user()
+            method = getattr(fn, '__method__', None) # eg. getattr(user, '__method__', None) = 'GET'
+            path = getattr(fn, '__route__', None) # eg. getattr(user, '__route__', None) = '/user')
             if method and path:
                 add_route(app, fn)

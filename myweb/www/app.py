@@ -1,9 +1,4 @@
-import logging; logging.basicConfig(level=logging.INFO)
 
-import asyncio, os, json, time
-from datetime import datetime
-
-from aiohttp import web
 '''
 def index(request):
     return web.Response(body=b'<h1>Awesome</h1>')
@@ -20,17 +15,26 @@ loop.run_until_complete(init(loop))
 loop.run_forever()
 '''
 
+import logging; logging.basicConfig(level=logging.INFO)
 
+import asyncio, os, json, time
+from datetime import datetime
+
+from aiohttp import web
 from jinja2 import Environment, FileSystemLoader
+
+from config import configs
 
 import orm
 from coroweb import add_routes, add_static
+
+from handlers import cookie2user, COOKIE_NAME
 
 def init_jinja2(app, **kw):
     logging.info('init jinja2...')
     options = dict(
         autoescape = kw.get('autoescape', True),
-        block_start_string = kw.get('block_start_string', '{%'),
+        block_start_string = kw.get('block_start_string', '{%'),  # eg. in test.html {% for u in users %}
         block_end_string = kw.get('block_end_string', '%}'),
         variable_start_string = kw.get('variable_start_string', '{{'),
         variable_end_string = kw.get('variable_end_string', '}}'),
@@ -38,7 +42,7 @@ def init_jinja2(app, **kw):
     )
     path = kw.get('path', None)
     if path is None:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates') # __file__ address of current file(app.py)
     logging.info('set jinja2 template path: %s' % path)
     env = Environment(loader=FileSystemLoader(path), **options)
     filters = kw.get('filters', None)
@@ -46,6 +50,22 @@ def init_jinja2(app, **kw):
         for name, f in filters.items():
             env.filters[name] = f
     app['__templating__'] = env
+
+
+async def auth_factory(app, handler):
+    async def auth(request):
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
+        cookie_str = request.cookies.get(COOKIE_NAME)
+        if cookie_str:
+            user = await cookie2user(cookie_str)
+            if user:
+                logging.info('set current user: %s' % user.email)
+                request.__user__ = user
+        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
+            return web.HTTPFound('/signin')
+        return (await handler(request))
+    return auth
 
 async def logger_factory(app, handler):
     async def logger(request):
@@ -89,6 +109,7 @@ async def response_factory(app, handler):
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
+                r['__user__'] = request.__user__
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
@@ -118,10 +139,10 @@ def datetime_filter(t):
     return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
 
 async def init(loop):
-    await orm.create_pool(loop=loop, host='localhost', port=3306, user='www-data', password='www-data', db='awesome')
+    await orm.create_pool(loop=loop, host='localhost', port=3306, user='www-data', password='www-data', db='awesome') # connect database
     app = web.Application(loop=loop, middlewares=[logger_factory, response_factory])
     init_jinja2(app, filters=dict(datetime=datetime_filter))
-    add_routes(app, 'handlers')
+    add_routes(app, 'handlers') # inside code used RequestHandlers | argument 'handlers' fixed the use of add_routes()
     add_static(app)
     srv = await loop.create_server(app.make_handler(), '127.0.0.1', 9000)
     logging.info('server started at http://127.0.0.1:9000...')
