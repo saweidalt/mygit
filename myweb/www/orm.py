@@ -65,7 +65,7 @@ def execute(sql, args, autocommit=True):
             yield from conn.begin()
         try:
             cur = yield from conn.cursor()
-            yield from cur.execute(sql.replace('?','%s'), args)    # 问题出在这里！
+            yield from cur.execute(sql.replace('?','%s'), args)   
             affected = cur.rowcount
             print('affected:',affected)
             yield from cur.close()
