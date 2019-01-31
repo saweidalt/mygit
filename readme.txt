@@ -1,1 +1,0 @@
-Practice git and python useing guide of http://www.liaoxuefeng.com/
